@@ -289,6 +289,10 @@ def main():
         "--skip-qa", action="store_true",
         help="Skip the QA verification LLM call"
     )
+    parser.add_argument(
+        "--telegram", action="store_true",
+        help="Send itemized summary to the configured Telegram group"
+    )
     args = parser.parse_args()
 
     client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
@@ -317,6 +321,15 @@ def main():
 
     # Stage 4
     print_summary(receipt, qa_result)
+
+    if args.telegram:
+        print("[4/4] Sending to Telegram …", file=sys.stderr)
+        try:
+            from telegram_sender import send_receipt as tg_send
+            msg_id = tg_send(receipt, qa_result)
+            print(f"      ✓ Posted (message_id={msg_id})", file=sys.stderr)
+        except Exception as exc:
+            print(f"      ✗ Telegram send failed: {exc}", file=sys.stderr)
 
     if args.json:
         print(json.dumps({"receipt": receipt, "qa": qa_result}, indent=2, ensure_ascii=False))

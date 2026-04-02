@@ -1,3 +1,6 @@
 ANTHROPIC_API_KEY = "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"
 
 TEXT_MODEL = "claude-opus-4-5"
+
+TELEGRAM_BOT_TOKEN = "8674376493:AAG0UyQJXbwLX9Dqi3b-fzB-OMbcwCQFcjQ"   # from @BotFather
+TELEGRAM_CHAT_ID   = "-4889343725"   # group chat ID (negative integer, e.g. -1001234567890)
