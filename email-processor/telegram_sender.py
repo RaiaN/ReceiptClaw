@@ -34,71 +34,69 @@ def _money(value, sym: str = "£") -> str:
 
 
 def format_receipt_html(receipt: dict, qa: dict) -> str:
-    """Render receipt + QA result as a Telegram HTML message."""
-    sym = "£" if (receipt.get("currency") or "GBP") == "GBP" else receipt.get("currency", "") + " "
-    lines: list[str] = []
-
-    # ── Header ──────────────────────────────────────────────────────────────
+    """Render receipt + QA result as a mobile-friendly Telegram HTML message."""
+    sym      = "£" if (receipt.get("currency") or "GBP") == "GBP" else receipt.get("currency", "") + " "
     merchant = _e(receipt.get("merchant") or "Tesco")
     date     = _e(receipt.get("ordered_at") or "N/A")
     payment  = _e(receipt.get("payment_method") or "N/A")
     total    = receipt.get("total")
+    items    = receipt.get("items") or []
+    lines: list[str] = []
 
-    lines.append(f"<b>🧾 {merchant} — ITEMIZED RECEIPT</b>")
-    lines.append(f"📅 {date}   💳 {payment}   💰 <b>{_money(total, sym)}</b>")
+    # ── Header ───────────────────────────────────────────────────────────────
+    lines.append(f"🧾 <b>{merchant} — Receipt</b>")
+    lines.append(f"📅 {date}  •  💳 {payment}  •  💰 <b>{_money(total, sym)}</b>")
     lines.append("")
 
-    # ── Line items ───────────────────────────────────────────────────────────
-    items = receipt.get("items") or []
-    col = 34
-    rows = [f"{'#':<3} {'Item':<{col}} {'Total':>7}  {'Saved':>7}"]
-    rows.append("─" * (col + 22))
+    # ── Line items as a simple numbered list ─────────────────────────────────
+    lines.append("<b>Items</b>")
     for idx, item in enumerate(items, start=1):
-        label = (item.get("normalized_label") or item.get("raw_label") or "?")[:col]
+        label = _e(item.get("normalized_label") or item.get("raw_label") or "?")
         qty   = item.get("quantity")
-        qty_s = f"{qty:g}×" if qty is not None else "?"
+        qty_s = f"{qty:g}× " if qty is not None else ""
         tot   = item.get("line_total")
         disc  = item.get("item_discount")
-        disc_s = f"-{_money(disc, sym)}" if disc else ""
-        rows.append(f"{idx:<3} {qty_s} {label:<{col - 3}} {_money(tot, sym):>7}  {disc_s:>7}")
+        disc_s = f"  <i>-{_money(disc, sym)}</i>" if disc else ""
+        lines.append(f"{idx}. {qty_s}{label} — <b>{_money(tot, sym)}</b>{disc_s}")
 
-    rows.append("─" * (col + 22))
+    # ── Basket discounts ──────────────────────────────────────────────────────
+    basket_discounts = receipt.get("basket_discounts") or []
+    if basket_discounts:
+        lines.append("")
+        lines.append("<b>Discounts &amp; adjustments</b>")
+        for bd in basket_discounts:
+            amt  = bd["amount"]
+            sign = "-" if amt >= 0 else "+"
+            lines.append(f"• {_e(bd['description'])} — {sign}{_money(abs(amt), sym)}")
 
-    # basket discounts
-    for bd in receipt.get("basket_discounts") or []:
-        amt  = bd["amount"]
-        sign = "-" if amt >= 0 else "+"
-        rows.append(f"    {_e(bd['description']):<{col}} {sign}{_money(abs(amt), sym):>7}")
-
-    rows.append("")
+    # ── Totals ────────────────────────────────────────────────────────────────
+    lines.append("")
     subtotal = receipt.get("subtotal")
     if subtotal is not None:
-        rows.append(f"    {'Basket before offers':<{col}} {_money(subtotal, sym):>7}")
+        lines.append(f"Basket before offers: {_money(subtotal, sym)}")
 
     item_savings   = sum((i.get("item_discount") or 0) for i in items)
-    basket_savings = sum((b.get("amount") or 0) for b in (receipt.get("basket_discounts") or []))
+    basket_savings = sum((b.get("amount") or 0) for b in basket_discounts)
     total_savings  = item_savings + basket_savings
     if total_savings:
-        rows.append(f"    {'Total savings':<{col}} -{_money(total_savings, sym):>7}")
+        lines.append(f"Total savings: <b>-{_money(total_savings, sym)}</b>")
 
     delivery = receipt.get("delivery_fee")
     if delivery is not None:
-        rows.append(f"    {'Delivery fee':<{col}} {_money(delivery, sym):>7}")
+        lines.append(f"Delivery: {_money(delivery, sym)}")
 
-    rows.append("")
-    rows.append(f"    {'TOTAL PAID':<{col}} {_money(total, sym):>7}")
+    lines.append(f"<b>Total paid: {_money(total, sym)}</b>")
 
-    lines.append(f"<pre>{chr(10).join(rows)}</pre>")
-
-    # ── QA status ────────────────────────────────────────────────────────────
+    # ── QA status ─────────────────────────────────────────────────────────────
+    lines.append("")
     if qa.get("ok"):
         lines.append("✅ <i>QA check passed — arithmetic verified</i>")
     else:
         issues = "; ".join(qa.get("issues") or ["unknown issue"])
-        lines.append(f"⚠️ <i>QA check failed: {_e(issues)}</i>")
+        lines.append(f"⚠️ <i>QA failed: {_e(issues)}</i>")
 
     lines.append("")
-    lines.append("<i>Tap a button below to assign each item:</i>")
+    lines.append("<i>Assign each item using the buttons below:</i>")
 
     return "\n".join(lines)
 
@@ -111,26 +109,39 @@ def _btn(text: str, callback_data: str) -> dict:
     return {"text": text, "callback_data": callback_data}
 
 
+def _item_label(idx: int, item: dict) -> str:
+    """Short display label for a keyboard header button: '#N name — £total'."""
+    name  = (item.get("normalized_label") or item.get("raw_label") or f"Item {idx + 1}")[:28]
+    total = item.get("line_total")
+    sym   = "£"
+    price = f" — {_money(total, sym)}" if total is not None else ""
+    return f"#{idx + 1} {name}{price}"
+
+
 def build_keyboard(items: list[dict]) -> list[list[dict]]:
     """
-    One button row per item followed by a Done / Reset footer row.
+    Two rows per item:
+      Row 1 — label button (non-interactive): '#N item name — £total'
+      Row 2 — action buttons: Mine / Split 2 / All share / Skip
+    Footer row: Done / Reset
 
     callback_data scheme:
       i:{idx}:m  — mine (sole ownership)
       i:{idx}:h  — half (2-way split)
       i:{idx}:a  — all share (n-way even split)
       i:{idx}:s  — skip (not mine)
+      i:{idx}:info — label tap (no-op)
       done       — compute and post settlements
       reset      — clear all selections
     """
     keyboard: list[list[dict]] = []
     for idx, item in enumerate(items):
-        label = (item.get("normalized_label") or item.get("raw_label") or f"Item {idx + 1}")[:20]
+        keyboard.append([_btn(_item_label(idx, item), f"i:{idx}:info")])
         keyboard.append([
-            _btn(f"✅ Mine",      f"i:{idx}:m"),
-            _btn(f"½ Split 2",   f"i:{idx}:h"),
-            _btn(f"👥 All share", f"i:{idx}:a"),
-            _btn(f"⏭ Skip",      f"i:{idx}:s"),
+            _btn("✅ Mine",      f"i:{idx}:m"),
+            _btn("½ Split 2",   f"i:{idx}:h"),
+            _btn("👥 All share", f"i:{idx}:a"),
+            _btn("⏭ Skip",      f"i:{idx}:s"),
         ])
     keyboard.append([
         _btn("✅ Done — settle up", "done"),

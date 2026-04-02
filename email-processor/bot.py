@@ -38,7 +38,7 @@ except ImportError:
     sys.exit(1)
 
 from config import TELEGRAM_BOT_TOKEN
-from telegram_sender import _money, build_keyboard
+from telegram_sender import _item_label, _money, build_keyboard
 
 logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(message)s",
@@ -72,26 +72,28 @@ def register_message(message_id: int, receipt: dict) -> None:
 def _build_stateful_keyboard(
     items: list[dict], allocations: dict[int, dict]
 ) -> InlineKeyboardMarkup:
+    """
+    Two rows per item, matching build_keyboard in telegram_sender.py:
+      Row 1 — label showing item name + current assignment (if any)
+      Row 2 — action buttons (or Change button if already assigned)
+    """
     keyboard: list[list[InlineKeyboardButton]] = []
     for idx, item in enumerate(items):
-        label = (item.get("normalized_label") or item.get("raw_label") or f"Item {idx + 1}")[:18]
         alloc = allocations.get(idx)
+
         if alloc:
             action_label = _ACTION_LABEL.get(alloc["action"], "?")
-            row_label    = f"{action_label} — @{alloc['user']}"
-            # Show the assigned state as a single wide button; keep re-assign options
-            row = [
-                InlineKeyboardButton(row_label,          callback_data=f"i:{idx}:info"),
-                InlineKeyboardButton("↩ Change",         callback_data=f"i:{idx}:clear"),
-            ]
+            label_text   = f"#{idx + 1} {action_label} — @{alloc['user']}"
+            keyboard.append([InlineKeyboardButton(label_text, callback_data=f"i:{idx}:info")])
+            keyboard.append([InlineKeyboardButton("↩ Change assignment", callback_data=f"i:{idx}:clear")])
         else:
-            row = [
+            keyboard.append([InlineKeyboardButton(_item_label(idx, item), callback_data=f"i:{idx}:info")])
+            keyboard.append([
                 InlineKeyboardButton("✅ Mine",      callback_data=f"i:{idx}:m"),
                 InlineKeyboardButton("½ Split 2",   callback_data=f"i:{idx}:h"),
                 InlineKeyboardButton("👥 All share", callback_data=f"i:{idx}:a"),
                 InlineKeyboardButton("⏭ Skip",      callback_data=f"i:{idx}:s"),
-            ]
-        keyboard.append(row)
+            ])
 
     keyboard.append([
         InlineKeyboardButton("✅ Done — settle up", callback_data="done"),
