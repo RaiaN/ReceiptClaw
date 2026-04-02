@@ -1,6 +1,6 @@
 import os
 
-GROQ_API_KEY = os.getenv("GROQ_API_KEY", "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")
+GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
 
 IMAGE_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct"  # best-effort structured outputs
 TEXT_MODEL = "openai/gpt-oss-20b"  # strict structured outputs
