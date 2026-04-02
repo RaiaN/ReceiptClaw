@@ -1,0 +1,3 @@
+__pycache__/
+*.pyc
+receipt-processor/demo-ledger.json
