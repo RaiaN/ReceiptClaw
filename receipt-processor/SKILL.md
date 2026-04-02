@@ -1,11 +1,11 @@
 ---
 name: receipt-processor
-description: Extract structured JSON data from receipt images or plain text using the Groq LLM API. Use when processing receipts, parsing purchase data, extracting line items or totals, handling store transactions, or when the user mentions receipts, invoices, or expense tracking.
+description: Extract structured JSON data from plain-text Tesco receipts using the Groq LLM API. Use when processing receipts, parsing purchase data, extracting line items or totals, handling Tesco orders, or when the user mentions receipts, invoices, or expense tracking.
 ---
 
 # Receipt Processor
 
-Extracts structured receipt data (store, date, items, totals, taxes, payment method) as JSON from an image or text file using Groq's LLM API.
+Extracts structured receipt data from **plain-text** Tesco receipts (email body, copy-pasted text, or forwarded message) using Groq's LLM API with strict JSON schema mode. Output aligns with the `Order` / `OrderItem` data model defined in `PLAN.md`.
 
 ## Setup
 
@@ -21,36 +21,55 @@ Scripts live in `receipt-processor/scripts/`. Always run from that directory so 
 ```bash
 cd receipt-processor/scripts
 
-# From an image (JPEG, PNG, WEBP, GIF)
-python process_receipt.py path/to/receipt.jpg
-
 # From a text file
 python process_receipt.py --text path/to/receipt.txt
 
 # Inline text
-python process_receipt.py --inline "Store: Walmart\nTotal: $42.50"
+python process_receipt.py --inline "Tesco Online\nOrdered: 15 Mar 2024\nMilk x1  £1.10\nTotal: £1.10"
 ```
 
 Output is printed as pretty-printed JSON to stdout.
 
-## Models
+## Model
 
 | Input | Model | Notes |
 |-------|-------|-------|
-| Image | `meta-llama/llama-4-scout-17b-16e-instruct` | Best-effort structured output |
 | Text  | `openai/gpt-oss-20b` | Strict JSON schema mode |
 
-Configured in `config.py` — change `IMAGE_MODEL` or `TEXT_MODEL` there.
+Configured in `config.py` — change `TEXT_MODEL` there.
 
 ## Output Schema
 
 Key fields returned (see `schema.py` for full schema):
 
-- `store_name`, `store_address`
-- `date`, `time`
-- `items[]` — `name`, `quantity`, `unit_price`, `total_price`
-- `subtotal`, `tax`, `total`
-- `payment_method`, `currency`
+- `merchant` — store name, e.g. `"Tesco"`
+- `ordered_at` — ISO 8601 date-time, e.g. `"2024-03-15T14:30:00"`
+- `currency` — 3-letter code, defaults to `"GBP"`
+- `subtotal`, `delivery_fee`, `total` — monetary totals
+- `basket_discounts[]` — basket-level savings; each has `description` and `amount`
+- `payment_method` — e.g. `"Visa"`, `"Clubcard Pay+"`
+- `items[]` — one entry per line item:
+  - `raw_label` — label exactly as printed on the receipt
+  - `normalized_label` — cleaned, human-readable product name
+  - `quantity`, `unit_price`, `line_total`
+  - `item_discount` — positive value if an item-level discount applies; `null` otherwise
+
+## Mapping to PLAN.md Data Model
+
+| Schema field | PLAN.md model field |
+|---|---|
+| `merchant` | `Order.merchant` |
+| `ordered_at` | `Order.ordered_at` |
+| `currency` | `Order.currency` |
+| `subtotal` | `Order.subtotal` |
+| `delivery_fee` | `Order.fees` |
+| `basket_discounts` | `Order.discounts` |
+| `total` | `Order.total` |
+| `items[].raw_label` | `OrderItem.raw_label` |
+| `items[].normalized_label` | `OrderItem.normalized_label` |
+| `items[].quantity` | `OrderItem.quantity` |
+| `items[].unit_price` | `OrderItem.unit_price` |
+| `items[].line_total` | `OrderItem.line_total` |
 
 ## Error Handling
 
@@ -60,7 +79,8 @@ Errors are returned as `{"error": "..."}` JSON — never thrown to stderr. Alway
 
 When asked to process a receipt:
 
-1. Determine input type — image path, text file, or inline string
+1. Determine input type — text file path or inline string
 2. Run the appropriate command above
 3. Parse the JSON output
-4. Use `error` key to detect failures and report them clearly
+4. Check `error` key for failures and report them clearly
+5. Map the output fields to `Order` / `OrderItem` before persisting
