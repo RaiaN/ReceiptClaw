@@ -65,23 +65,6 @@ The parsed receipt matches the shared schema in `receipt-processor/scripts/schem
   - `quantity`, `unit_price`, `line_total`
   - `item_discount` — positive saving if an offer applies; `null` otherwise
 
-## Mapping to PLAN.md Data Model
-
-| Schema field          | PLAN.md model field      |
-|-----------------------|--------------------------|
-| `merchant`            | `Order.merchant`         |
-| `ordered_at`          | `Order.ordered_at`       |
-| `currency`            | `Order.currency`         |
-| `subtotal`            | `Order.subtotal`         |
-| `delivery_fee`        | `Order.fees`             |
-| `basket_discounts`    | `Order.discounts`        |
-| `total`               | `Order.total`            |
-| `items[].raw_label`   | `OrderItem.raw_label`    |
-| `items[].normalized_label` | `OrderItem.normalized_label` |
-| `items[].quantity`    | `OrderItem.quantity`     |
-| `items[].unit_price`  | `OrderItem.unit_price`   |
-| `items[].line_total`  | `OrderItem.line_total`   |
-
 ## Error Handling
 
 Errors from the LLM or JSON parsing are printed as `{"error": "..."}` to stdout and the process exits with code 1. Always check the exit code or `error` key before consuming output.
